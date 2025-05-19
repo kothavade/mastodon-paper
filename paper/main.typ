@@ -64,14 +64,18 @@ We believe that this is a representative dataset of the Mastodon network, and th
 
 == Cloud Providers
 #let cloud_providers = csv("cloud_providers.csv")
+#let total_instances = cloud_providers.map(x => int(x.at(1))).sum()
+#import "@preview/zero:0.3.3": num
+#let ranked_cloud_providers = cloud_providers.enumerate().map(x => ([#{int(x.at(0))+1}], x.at(1).at(0), x.at(1).at(1), [#calc.round(int(x.at(1).at(1)) / total_instances, digits: 3)]))
 
 #figure(
   caption: [Instance Counts by Cloud Provider],
   // placement: top,
   table(
-    columns: (10em, auto),
-    table.header[Cloud Provider][Count],
-    ..cloud_providers.flatten()
+    columns: (auto, 10em, auto, auto),
+    align: (left, left, right, right),
+    table.header[Rank][Cloud Provider][Count][Share],
+    ..ranked_cloud_providers.flatten()
   )
 )
 

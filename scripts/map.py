@@ -45,4 +45,4 @@ ax.set_axis_off()
 plt.savefig("map.png", dpi=300)
 
 # save the top 10 countries by domain count to a csv file
-country_counts.head(10).to_csv("top_10_countries.csv", index=False, header=False)
+country_counts.to_csv("countries.csv", index=False, header=False)

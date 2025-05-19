@@ -124,6 +124,9 @@ func CollectData() {
 
 	// Read embedded MaxMind DB files
 	country_v4_data, err := mmdbFS.ReadFile("data/country-ipv4.mmdb")
+	if err != nil {
+		fmt.Println("Error opening country_v4_data", err)
+	}
 	country_db_v4, err := maxminddb.FromBytes(country_v4_data)
 	if err != nil {
 		fmt.Println("Error opening country_db_v4", err)

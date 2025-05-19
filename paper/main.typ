@@ -10,14 +10,12 @@
   authors: (
     (
       name: "Ved Kothavade",
-      // department: [Co-Founder],
       organization: [University of Maryland, College Park],
       location: [College Park, MD],
       email: "vedk@terpmail.umd.edu",
     ),
     (
       name: "Phan Ngyuen",
-      // department: [Co-Founder],
       organization: [University of Maryland, College Park],
       location: [College Park, MD],
       email: "phan2003@terpmail.umd.edu",
@@ -113,10 +111,12 @@ As @country_table shows, the majority of instances are in the United States, fol
   ),
 )
 
-// none is first
-// ovh hetzner digitalocean are 2-4
-// then aws, gcp, azure
-Most instances are not hosted on cloud providers, and among those that are, surprisingly the most common are none of the big 3, but instead OVH, Hetzner, and DigitalOcean. In total, we see that 46.72% of instances are hosted on cloud providers.
+#let total_cloud_instances = cloud_providers.slice(1).map(x => int(x.at(1))).sum()
+#let cloud_share = pct(total_cloud_instances / total_instances)
+
+Most instances are not hosted on cloud providers, and among those that are, surprisingly the most common are none of the big 3, but instead OVH, Hetzner, and DigitalOcean. In total, we see that #cloud_share of instances are hosted on cloud providers, indicating that the majority of instances are run on personal servers. From this, we can infer that many Mastodon administrators are...
+
+== Autonomous Systems
 
 #let asn_cloud_analysis = csv("asn_cloud_analysis.csv").slice(1)
 #let cloud_instances = asn_cloud_analysis.filter(x => x.at(2) == "1")
@@ -143,6 +143,13 @@ Most instances are not hosted on cloud providers, and among those that are, surp
     ylabel: "IP Address Count",
     title: "AS Distribution",
   ),
-)
+)<as_distribution>
 
-Using CAIDA's AS Rank, we ranked... @as_rank.
+We mapped IP addresses to Autonomous Systems using GeoLite2, found the CAIDA AS Rank for each AS. According to CAIDA, the AS Rank is a measure of the influcence of an AS to the global routing system, as calculated by their sizes, peering agreements, and more.
+
+We then plotted the number of IP addresses per AS, colored by whether the AS is a cloud provider or not. We see that the cloud providers are disproportionately large, and that there are many more IP addresses in the cloud providers than in the non-cloud providers.
+
+
+
+
+

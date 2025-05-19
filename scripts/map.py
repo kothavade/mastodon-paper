@@ -29,7 +29,7 @@ merged_data["domain_count"] = merged_data["domain_count"].fillna(0)
 fig, ax = plt.subplots(1, 1, figsize=(15, 10))
 
 merged_data.plot(
-    column="domain_count",  # The column to base the color intensity on
+    column="domain_count",
     ax=ax,
     legend=True,
     cmap="viridis",  # Colormap (e.g., 'OrRd', 'YlGnBu', 'viridis')
@@ -44,5 +44,4 @@ ax.set_axis_off()
 # plt.show()
 plt.savefig("paper/map.png", dpi=300)
 
-# save the top 10 countries by domain count to a csv file
 country_counts.to_csv("paper/countries.csv", index=False, header=False)

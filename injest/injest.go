@@ -5,6 +5,8 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"os"
+	"path/filepath"
 
 	_ "github.com/mattn/go-sqlite3"
 	"github.com/neo4j/neo4j-go-driver/v5/neo4j"
@@ -41,17 +43,11 @@ func Injest() {
 	session := driver.NewSession(ctx, neo4j.SessionConfig{AccessMode: neo4j.AccessModeWrite})
 	defer session.Close(ctx)
 
-	db, err := sql.Open("sqlite3", "node_process.db")
+	db, err := sql.Open("sqlite3", "node_process.db?cache=shared")
 	if err != nil {
 		panic(err)
 	}
 	defer db.Close()
-
-	// add a new column to the process_nodes table that tracks injest status
-	_, err = db.Exec("ALTER TABLE process_nodes ADD COLUMN injest_status TEXT")
-	if err != nil {
-		panic(err)
-	}
 
 	// Get total count of nodes to process
 	var totalNodes int
@@ -67,9 +63,21 @@ func Injest() {
 	}
 	defer rows.Close()
 
-	processedNodes := 0
-	totalRelationships := 0
+	// Create a CSV file for Neo4j import
+	csvPath := "domain_peers.csv"
+	csvFile, err := os.Create(csvPath)
+	if err != nil {
+		panic(err)
+	}
+	defer csvFile.Close()
 
+	// Write CSV header
+	_, err = csvFile.WriteString("domain,peer\n")
+	if err != nil {
+		panic(err)
+	}
+
+	i := 0
 	for rows.Next() {
 		var domain string
 		var peersJSON string
@@ -78,62 +86,29 @@ func Injest() {
 			continue
 		}
 
-		// Update injest status to processing
-		_, err = db.Exec("UPDATE process_nodes SET injest_status = ? WHERE domain = ?", StatusProcessing, domain)
-		if err != nil {
-			fmt.Printf("Error updating injest status: %v\n", err)
-			continue
-		}
-
 		var peers []string
 		if err := json.Unmarshal([]byte(peersJSON), &peers); err != nil {
 			fmt.Printf("Error unmarshalling peers for %s: %v\n", domain, err)
-			_, _ = db.Exec("UPDATE process_nodes SET injest_status = ? WHERE domain = ?", StatusFailed, domain)
 			continue
 		}
 
-		// Create relationships in Neo4j
-		_, err = session.ExecuteWrite(ctx, func(tx neo4j.ManagedTransaction) (any, error) {
-			for _, peer := range peers {
-				_, err := tx.Run(ctx, `
-					MATCH (a:MastodonNode {url: $domain})
-					MATCH (b:MastodonNode {url: $peer})
-					MERGE (a)-[:PEERS_WITH]->(b)
-				`, map[string]any{
-					"domain": domain,
-					"peer":   peer,
-				})
-				if err != nil {
-					return nil, err
-				}
+		// Write each domain-peer relationship to CSV
+		for _, peer := range peers {
+			_, err = csvFile.WriteString(fmt.Sprintf("%s,%s\n", domain, peer))
+			if err != nil {
+				fmt.Printf("Error writing to CSV: %v\n", err)
+				continue
 			}
-			return nil, nil
-		})
-
-		if err != nil {
-			fmt.Printf("Error creating relationships for %s: %v\n", domain, err)
-			_, _ = db.Exec("UPDATE process_nodes SET injest_status = ? WHERE domain = ?", StatusFailed, domain)
-			continue
 		}
 
-		// Update injest status to completed
-		_, err = db.Exec("UPDATE process_nodes SET injest_status = ? WHERE domain = ?", StatusCompleted, domain)
-		if err != nil {
-			fmt.Printf("Error updating final injest status: %v\n", err)
-			continue
-		}
-
-		processedNodes++
-		totalRelationships += len(peers)
-		fmt.Printf("Progress: %d/%d nodes processed (%d relationships created) - Latest: %s\n",
-			processedNodes, totalNodes, totalRelationships, domain)
+		fmt.Printf("Wrote %s (%d/%d) to CSV\n", domain, i+1, totalNodes)
+		i++
 	}
 
-	if err = rows.Err(); err != nil {
-		fmt.Printf("Error iterating rows: %v\n", err)
+	absPath, err := filepath.Abs(csvPath)
+	if err != nil {
+		fmt.Printf("Error getting absolute path: %v\n", err)
+		absPath = csvPath
 	}
-
-	fmt.Printf("\nProcessing complete!\n")
-	fmt.Printf("Total nodes processed: %d\n", processedNodes)
-	fmt.Printf("Total relationships created: %d\n", totalRelationships)
+	fmt.Printf("CSV file created at: %s\n", absPath)
 }

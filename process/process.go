@@ -1,7 +1,6 @@
 package process
 
 import (
-	"context"
 	"database/sql"
 	"encoding/json"
 	"fmt"
@@ -12,7 +11,6 @@ import (
 	"time"
 
 	_ "github.com/mattn/go-sqlite3"
-	"github.com/neo4j/neo4j-go-driver/v5/neo4j"
 )
 
 // Node processing status constants
@@ -25,7 +23,7 @@ const (
 
 // initProcessDB initializes the SQLite database for processing state
 func initProcessDB() (*sql.DB, error) {
-	db, err := sql.Open("sqlite3", "./node_filter.db")
+	db, err := sql.Open("sqlite3", "./node_process.db")
 	if err != nil {
 		return nil, fmt.Errorf("failed to open database: %w", err)
 	}
@@ -36,7 +34,8 @@ func initProcessDB() (*sql.DB, error) {
 			domain TEXT PRIMARY KEY,
 			status TEXT,
 			error TEXT,
-			last_updated TIMESTAMP
+			last_updated TIMESTAMP,
+			peers TEXT
 		)
 	`)
 	if err != nil {
@@ -56,8 +55,8 @@ func initializeProcessNodes(db *sql.DB, nodes []string) error {
 	defer tx.Rollback()
 
 	stmt, err := tx.Prepare(`
-		INSERT OR IGNORE INTO process_nodes (domain, status, last_updated) 
-		VALUES (?, ?, CURRENT_TIMESTAMP)
+		INSERT OR IGNORE INTO process_nodes (domain, status, last_updated, peers) 
+		VALUES (?, ?, CURRENT_TIMESTAMP, ?)
 	`)
 	if err != nil {
 		return err
@@ -65,7 +64,7 @@ func initializeProcessNodes(db *sql.DB, nodes []string) error {
 	defer stmt.Close()
 
 	for _, node := range nodes {
-		_, err := stmt.Exec(node, StatusPending)
+		_, err := stmt.Exec(node, StatusPending, "")
 		if err != nil {
 			return err
 		}
@@ -122,27 +121,14 @@ func getProcessStats(db *sql.DB) (total int, completed int, failed int, pending 
 	return
 }
 
+// NodeResult represents the result of fetching peers for a node
+type NodeResult struct {
+	Node  string
+	Peers []string
+	Error error
+}
+
 func ProcessNodes() {
-	ctx := context.Background()
-	dbUri := "neo4j+s://8bd77a03.databases.neo4j.io"
-	dbUser := "neo4j"
-	dbPassword := "pcvwVnqKqAgqqxGfPSbQ3kbH6pFtLjNu-Ufrqp33m1E"
-
-	driver, err := neo4j.NewDriverWithContext(
-		dbUri,
-		neo4j.BasicAuth(dbUser, dbPassword, ""))
-	if err != nil {
-		panic(err)
-	}
-	defer driver.Close(ctx)
-
-	err = driver.VerifyConnectivity(ctx)
-	if err != nil {
-		panic(err)
-	}
-	fmt.Println("Neo4j connection established.")
-
-	// Initialize SQLite database for process state
 	sqliteDB, err := initProcessDB()
 	if err != nil {
 		panic(fmt.Sprintf("Failed to initialize SQLite database: %v", err))
@@ -185,115 +171,116 @@ func ProcessNodes() {
 
 	// Create HTTP client with timeout
 	client := &http.Client{
-		Timeout: 10 * time.Second,
+		Timeout: 5 * time.Second,
 	}
 
-	// Set up a worker pool
-	numWorkers := 5 // Adjust based on needs
+	// Create channels for worker pool
+	jobs := make(chan string, len(pendingNodes))
+	results := make(chan NodeResult, len(pendingNodes))
 	var wg sync.WaitGroup
-	nodeQueue := make(chan string, len(pendingNodes))
 
-	// Launch workers
-	for i := range numWorkers {
+	// Start workers
+	numWorkers := 10
+	fmt.Printf("Starting %d workers to process nodes\n", numWorkers)
+	for w := 1; w <= numWorkers; w++ {
 		wg.Add(1)
-		go func(workerID int) {
-			defer wg.Done()
-
-			for node := range nodeQueue {
-				processNodeWithState(ctx, sqliteDB, driver, client, node, workerID, nodesSet)
-			}
-		}(i + 1)
+		go func() {
+			worker(client, sqliteDB, jobs, results, &wg, nodesSet)
+		}()
 	}
 
-	// Add all pending nodes to the queue
+	// Send jobs to workers
 	for _, node := range pendingNodes {
-		nodeQueue <- node
+		jobs <- node
 	}
-	close(nodeQueue)
+	close(jobs)
 
-	// Wait for all workers to finish
-	wg.Wait()
+	// Wait for all jobs to complete
+	go func() {
+		wg.Wait()
+		close(results)
+	}()
 
-	// Print final stats
+	// Process results
+	processedCount := 0
+	for range results {
+		processedCount++
+		if processedCount%10 == 0 || processedCount == len(pendingNodes) {
+			fmt.Printf("Processed %d/%d nodes\n", processedCount, len(pendingNodes))
+		}
+	}
+
+	// Display final stats
 	total, completed, failed, pending, err := getProcessStats(sqliteDB)
 	if err != nil {
 		fmt.Println("Error getting process stats:", err)
 	} else {
-		fmt.Printf("Processing complete. Total: %d, Completed: %d, Failed: %d, Pending: %d\n",
-			total, completed, failed, pending)
+		fmt.Printf("\nProcessing complete. Stats:\n")
+		fmt.Printf("Total nodes: %d\n", total)
+		fmt.Printf("Completed: %d\n", completed)
+		fmt.Printf("Failed: %d\n", failed)
+		fmt.Printf("Pending: %d\n", pending)
 	}
 }
 
-// processNodeWithState handles fetching and storing data for a single node with state tracking
-func processNodeWithState(
-	ctx context.Context,
-	sqliteDB *sql.DB,
-	driver neo4j.DriverWithContext,
-	client *http.Client,
-	node string,
-	workerID int,
-	nodesSet map[string]bool,
-) {
-	fmt.Printf("Worker %d processing node: %s\n", workerID, node)
+// worker processes jobs from the jobs channel
+func worker(client *http.Client, db *sql.DB, jobs <-chan string, results chan<- NodeResult, wg *sync.WaitGroup, nodesSet map[string]bool) {
+	defer wg.Done()
 
-	// Update status to processing
-	_, err := sqliteDB.Exec(`
-		UPDATE process_nodes 
-		SET status = ?, last_updated = CURRENT_TIMESTAMP 
-		WHERE domain = ?
-	`, StatusProcessing, node)
-	if err != nil {
-		fmt.Printf("Worker %d: Error updating status for %s: %v\n", workerID, node, err)
-		return
-	}
+	for node := range jobs {
+		// Update status to processing
+		updateNodeStatus(db, node, StatusProcessing, "")
 
-	// Get peers for this node
-	fmt.Printf("Worker %d: Fetching peers for %s\n", workerID, node)
-	peers, err := fetchAPIData(client, "https://"+node+"/api/v1/instance/peers")
-	if err != nil {
-		fmt.Printf("Worker %d: Error fetching peers for %s: %v\n", workerID, node, err)
+		// Construct API endpoint
+		endpoint := fmt.Sprintf("https://%s/api/v1/instance/peers", node)
 
-		// Update status to failed
-		_, dbErr := sqliteDB.Exec(`
-			UPDATE process_nodes 
-			SET status = ?, error = ?, last_updated = CURRENT_TIMESTAMP 
-			WHERE domain = ?
-		`, StatusFailed, err.Error(), node)
-		if dbErr != nil {
-			fmt.Printf("Worker %d: Error updating status for %s: %v\n", workerID, node, dbErr)
+		// Fetch peers
+		peers, err := fetchAPIData(client, endpoint)
+
+		// Update database with result
+		if err != nil {
+			updateNodeStatus(db, node, StatusFailed, err.Error())
+		} else {
+			// Convert peers to JSON string
+			var filteredPeers []string
+			for _, peer := range peers {
+				if nodesSet[peer] {
+					filteredPeers = append(filteredPeers, peer)
+				}
+			}
+			peersJSON, err := json.Marshal(filteredPeers)
+			if err != nil {
+				updateNodeStatus(db, node, StatusFailed, fmt.Sprintf("Error marshalling peers: %v", err))
+			} else {
+				updateNodeWithPeers(db, node, string(peersJSON))
+			}
 		}
-		return
+
+		// Send minimal result to the results channel - we don't use the full data in the result handler
+		results <- NodeResult{Node: node}
 	}
+}
 
-	// Store data in Neo4j
-	fmt.Printf("Worker %d: Storing data for %s\n", workerID, node)
-	err = storeDataInNeo4j(ctx, driver, node, peers, nodesSet)
-	if err != nil {
-		fmt.Printf("Worker %d: Error storing data for %s: %v\n", workerID, node, err)
-
-		// Update status to failed
-		_, dbErr := sqliteDB.Exec(`
-			UPDATE process_nodes 
-			SET status = ?, error = ?, last_updated = CURRENT_TIMESTAMP 
-			WHERE domain = ?
-		`, StatusFailed, err.Error(), node)
-		if dbErr != nil {
-			fmt.Printf("Worker %d: Error updating status for %s: %v\n", workerID, node, dbErr)
-		}
-		return
-	}
-
-	// Update status to completed
-	_, err = sqliteDB.Exec(`
+// updateNodeStatus updates the status and error message for a node
+func updateNodeStatus(db *sql.DB, node string, status string, errorMsg string) error {
+	_, err := db.Exec(`
 		UPDATE process_nodes 
-		SET status = ?, last_updated = CURRENT_TIMESTAMP 
+		SET status = ?, error = ?, last_updated = CURRENT_TIMESTAMP 
 		WHERE domain = ?
-	`, StatusCompleted, node)
-	if err != nil {
-		fmt.Printf("Worker %d: Error updating status for %s: %v\n", workerID, node, err)
-	}
+	`, status, errorMsg, node)
 
-	fmt.Printf("Worker %d: Successfully processed node: %s\n", workerID, node)
+	return err
+}
+
+// updateNodeWithPeers updates a node with its peers and marks it as completed
+func updateNodeWithPeers(db *sql.DB, node string, peersJSON string) error {
+	_, err := db.Exec(`
+		UPDATE process_nodes 
+		SET status = ?, peers = ?, last_updated = CURRENT_TIMESTAMP, error = NULL
+		WHERE domain = ?
+	`, StatusCompleted, peersJSON, node)
+
+	return err
 }
 
 // fetchAPIData retrieves JSON data from the given endpoint
@@ -318,65 +305,5 @@ func fetchAPIData(client *http.Client, endpoint string) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-
 	return data, nil
-}
-
-// storeDataInNeo4j saves the node, its peers, and domain blocks to the Neo4j database
-func storeDataInNeo4j(ctx context.Context, driver neo4j.DriverWithContext, nodeURL string, peers []string, nodesSet map[string]bool) error {
-	session := driver.NewSession(ctx, neo4j.SessionConfig{AccessMode: neo4j.AccessModeWrite})
-	defer session.Close(ctx)
-
-	// Create the main node
-	_, err := session.ExecuteWrite(ctx, func(tx neo4j.ManagedTransaction) (any, error) {
-		// Create or merge the main node
-		_, err := tx.Run(ctx,
-			"MERGE (n:MastodonNode {url: $url})",
-			map[string]any{
-				"url": nodeURL,
-			})
-		if err != nil {
-			return nil, err
-		}
-
-		// Process peers
-		for _, peer := range peers {
-			if !nodesSet[peer] {
-				continue
-			}
-
-			_, err = tx.Run(ctx,
-				`MERGE (p:MastodonNode {url: $peerURL})
-				 WITH p
-				 MATCH (n:MastodonNode {url: $nodeURL})
-				 MERGE (n)-[r:PEERS_WITH]->(p)`,
-				map[string]any{
-					"peerURL": peer,
-					"nodeURL": nodeURL,
-				})
-			if err != nil {
-				return nil, err
-			}
-		}
-
-		// Process domain blocks
-		// for _, block := range domainBlocks {
-		// 	_, err = tx.Run(ctx,
-		// 		`MERGE (b:BlockedDomain {domain: $blockedDomain})
-		// 		 WITH b
-		// 		 MATCH (n:MastodonNode {url: $nodeURL})
-		// 		 MERGE (n)-[r:BLOCKS]->(b)`,
-		// 		map[string]any{
-		// 			"blockedDomain": block,
-		// 			"nodeURL":       nodeURL,
-		// 		})
-		// 	if err != nil {
-		// 		return nil, err
-		// 	}
-		// }
-
-		return nil, nil
-	})
-
-	return err
 }

@@ -35,7 +35,7 @@ print("\nDomain counts per cloud provider:")
 print(cloud_provider_counts)
 
 # Save to CSV
-cloud_provider_counts.to_csv("cloud_providers.csv", index=False, header=False)
+cloud_provider_counts.to_csv("paper/cloud_providers.csv", index=False, header=False)
 
 # Close the database connection
 conn.close()

@@ -42,7 +42,7 @@ ax.set_title("Number of Domains by Country", fontsize=24)
 ax.set_axis_off()
 
 # plt.show()
-plt.savefig("map.png", dpi=300)
+plt.savefig("paper/map.png", dpi=300)
 
 # save the top 10 countries by domain count to a csv file
-country_counts.to_csv("countries.csv", index=False, header=False)
+country_counts.to_csv("paper/countries.csv", index=False, header=False)

@@ -47,9 +47,9 @@ We believe that this is a representative dataset of the Mastodon network, and th
 #figure(
   caption: [Heatmap of Instance Locations],
   // placement: top,
-  image("../map.png")
+  image("map.png")
 )
-#let countries = csv("../countries.csv")
+#let countries = csv("countries.csv")
 #let top_n_countries = 10
 
 #figure(
@@ -63,7 +63,7 @@ We believe that this is a representative dataset of the Mastodon network, and th
 )
 
 == Cloud Providers
-#let cloud_providers = csv("../cloud_providers.csv")
+#let cloud_providers = csv("cloud_providers.csv")
 
 #figure(
   caption: [Instance Counts by Cloud Provider],
@@ -73,4 +73,36 @@ We believe that this is a representative dataset of the Mastodon network, and th
     table.header[Cloud Provider][Count],
     ..cloud_providers.flatten()
   )
+)
+
+// none is first
+// ovh hetzner digitalocean are 2-4
+// then aws, gcp, azure
+Most instances are not hosted on cloud providers, and among those that are, surprisingly the most common are none of the big 3, but instead OVH, Hetzner, and DigitalOcean.
+
+#let asn_cloud_analysis = csv("asn_cloud_analysis.csv").slice(1)
+#let cloud_instances = asn_cloud_analysis.filter(x => x.at(1) == "1")
+#let non_cloud_instances = asn_cloud_analysis.filter(x => x.at(1) == "0")
+#show: lq.set-legend(position: top + left)
+#figure(
+  caption: [Distribution of IPs across ASes according to their size (measured by their AS rank).],
+  lq.diagram(
+    lq.scatter(
+      non_cloud_instances.map(x => int(x.at(0))),
+      non_cloud_instances.map(x => int(x.at(2))),
+      color: blue,
+      label: [Non Cloud]
+  ),
+  lq.scatter(
+    cloud_instances.map(x => int(x.at(0))),
+    cloud_instances.map(x => int(x.at(2))),
+    color: red,
+    label: [Cloud]
+  ),
+  xscale: "log",
+  yscale: "log",
+  xlabel: "Autonomous System Rank",
+  ylabel: "IP Address Count",
+  title: "AS Distribution",
+)
 )

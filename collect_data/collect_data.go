@@ -2,6 +2,7 @@ package collect_data
 
 import (
 	"database/sql"
+	"embed"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -15,6 +16,9 @@ import (
 	_ "github.com/mattn/go-sqlite3"
 	"github.com/oschwald/maxminddb-golang"
 )
+
+//go:embed data/*.mmdb
+var mmdbFS embed.FS
 
 const (
 	StatusPending  = "pending"
@@ -96,7 +100,6 @@ func initializeInfoNodes(db *sql.DB, nodes []string) error {
 }
 
 func CollectData() {
-
 	// Open filtered_nodes.json file
 	nodes, err := os.ReadFile("filtered_processed_nodes.json")
 	if err != nil {
@@ -119,25 +122,26 @@ func CollectData() {
 	}
 	defer db.Close()
 
-	country_db_v4, err := maxminddb.Open("collect_data/country-ipv4.mmdb")
+	// Read embedded MaxMind DB files
+	country_db_v4, err := maxminddb.Open("data/country-ipv4.mmdb")
 	if err != nil {
 		fmt.Println("Error opening country_db_v4", err)
 	}
 	defer country_db_v4.Close()
 
-	country_db_v6, err := maxminddb.Open("collect_data/country-ipv6.mmdb")
+	country_db_v6, err := maxminddb.Open("data/country-ipv6.mmdb")
 	if err != nil {
 		fmt.Println("Error opening country_db_v6", err)
 	}
 	defer country_db_v6.Close()
 
-	asn_db_v4, err := maxminddb.Open("collect_data/asn-ipv4.mmdb")
+	asn_db_v4, err := maxminddb.Open("data/asn-ipv4.mmdb")
 	if err != nil {
 		fmt.Println("Error opening country_db_v4", err)
 	}
 	defer asn_db_v4.Close()
 
-	asn_db_v6, err := maxminddb.Open("collect_data/asn-ipv6.mmdb")
+	asn_db_v6, err := maxminddb.Open("data/asn-ipv6.mmdb")
 	if err != nil {
 		fmt.Println("Error opening country_db_v4", err)
 	}

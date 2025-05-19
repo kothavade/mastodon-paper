@@ -35,15 +35,20 @@ func ProcessNodes() {
 
 	nodes, err := os.ReadFile("filtered_nodes.json")
 	if err != nil {
-		fmt.Println("Error reading nodes.json:", err)
+		fmt.Println("Error reading filtered_nodes.json:", err)
 		return
 	}
 
 	var nodesList []string
 	err = json.Unmarshal(nodes, &nodesList)
 	if err != nil {
-		fmt.Println("Error unmarshalling nodes.json:", err)
+		fmt.Println("Error unmarshalling filtered_nodes.json:", err)
 		return
+	}
+
+	nodesSet := make(map[string]bool)
+	for _, node := range nodesList {
+		nodesSet[node] = true
 	}
 
 	// Create HTTP client with timeout
@@ -52,7 +57,7 @@ func ProcessNodes() {
 	}
 
 	// Set up a worker pool
-	numWorkers := 5 // Adjust based on needs
+	numWorkers := 10 // Adjust based on needs
 	var wg sync.WaitGroup
 	nodeQueue := make(chan string, len(nodesList))
 
@@ -63,7 +68,7 @@ func ProcessNodes() {
 			defer wg.Done()
 
 			for node := range nodeQueue {
-				processNode(ctx, driver, client, node, workerID)
+				processNode(ctx, driver, client, node, workerID, nodesSet)
 			}
 		}(i + 1)
 	}
@@ -81,7 +86,7 @@ func ProcessNodes() {
 
 // processNode handles fetching and storing data for a single node
 func processNode(ctx context.Context, driver neo4j.DriverWithContext, client *http.Client,
-	node string, workerID int) {
+	node string, workerID int, nodesSet map[string]bool) {
 
 	fmt.Printf("Worker %d processing node: %s\n", workerID, node)
 
@@ -92,15 +97,15 @@ func processNode(ctx context.Context, driver neo4j.DriverWithContext, client *ht
 		return
 	}
 
-	// Get domain blocks for this node
-	domainBlocks, err := fetchAPIData(client, "https://"+node+"/api/v1/instance/domain_blocks")
-	if err != nil {
-		fmt.Printf("Worker %d: Error fetching domain blocks for %s: %v\n", workerID, node, err)
-		return
-	}
+	// // Get domain blocks for this node
+	// domainBlocks, err := fetchAPIData(client, "https://"+node+"/api/v1/instance/domain_blocks")
+	// if err != nil {
+	// 	fmt.Printf("Worker %d: Error fetching domain blocks for %s: %v\n", workerID, node, err)
+	// 	return
+	// }
 
 	// Store data in Neo4j
-	err = storeDataInNeo4j(ctx, driver, node, peers, domainBlocks)
+	err = storeDataInNeo4j(ctx, driver, node, peers, nodesSet)
 	if err != nil {
 		fmt.Printf("Worker %d: Error storing data for %s: %v\n", workerID, node, err)
 		return
@@ -136,7 +141,7 @@ func fetchAPIData(client *http.Client, endpoint string) ([]string, error) {
 }
 
 // storeDataInNeo4j saves the node, its peers, and domain blocks to the Neo4j database
-func storeDataInNeo4j(ctx context.Context, driver neo4j.DriverWithContext, nodeURL string, peers []string, domainBlocks []string) error {
+func storeDataInNeo4j(ctx context.Context, driver neo4j.DriverWithContext, nodeURL string, peers []string, nodesSet map[string]bool) error {
 	session := driver.NewSession(ctx, neo4j.SessionConfig{AccessMode: neo4j.AccessModeWrite})
 	defer session.Close(ctx)
 
@@ -154,6 +159,10 @@ func storeDataInNeo4j(ctx context.Context, driver neo4j.DriverWithContext, nodeU
 
 		// Process peers
 		for _, peer := range peers {
+			if !nodesSet[peer] {
+				continue
+			}
+
 			_, err = tx.Run(ctx,
 				`MERGE (p:MastodonNode {url: $peerURL})
 				 WITH p
@@ -169,20 +178,20 @@ func storeDataInNeo4j(ctx context.Context, driver neo4j.DriverWithContext, nodeU
 		}
 
 		// Process domain blocks
-		for _, block := range domainBlocks {
-			_, err = tx.Run(ctx,
-				`MERGE (b:BlockedDomain {domain: $blockedDomain})
-				 WITH b
-				 MATCH (n:MastodonNode {url: $nodeURL})
-				 MERGE (n)-[r:BLOCKS]->(b)`,
-				map[string]any{
-					"blockedDomain": block,
-					"nodeURL":       nodeURL,
-				})
-			if err != nil {
-				return nil, err
-			}
-		}
+		// for _, block := range domainBlocks {
+		// 	_, err = tx.Run(ctx,
+		// 		`MERGE (b:BlockedDomain {domain: $blockedDomain})
+		// 		 WITH b
+		// 		 MATCH (n:MastodonNode {url: $nodeURL})
+		// 		 MERGE (n)-[r:BLOCKS]->(b)`,
+		// 		map[string]any{
+		// 			"blockedDomain": block,
+		// 			"nodeURL":       nodeURL,
+		// 		})
+		// 	if err != nil {
+		// 		return nil, err
+		// 	}
+		// }
 
 		return nil, nil
 	})

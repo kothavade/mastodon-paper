@@ -123,25 +123,38 @@ func CollectData() {
 	defer db.Close()
 
 	// Read embedded MaxMind DB files
-	country_db_v4, err := maxminddb.Open("data/country-ipv4.mmdb")
+	country_v4_data, err := mmdbFS.ReadFile("data/country-ipv4.mmdb")
+	country_db_v4, err := maxminddb.FromBytes(country_v4_data)
 	if err != nil {
 		fmt.Println("Error opening country_db_v4", err)
 	}
 	defer country_db_v4.Close()
 
-	country_db_v6, err := maxminddb.Open("data/country-ipv6.mmdb")
+	country_v6_data, err := mmdbFS.ReadFile("data/country-ipv6.mmdb")
+	if err != nil {
+		fmt.Println("Error opening country_v6_data", err)
+	}
+	country_db_v6, err := maxminddb.FromBytes(country_v6_data)
 	if err != nil {
 		fmt.Println("Error opening country_db_v6", err)
 	}
 	defer country_db_v6.Close()
 
-	asn_db_v4, err := maxminddb.Open("data/asn-ipv4.mmdb")
+	asn_v4_data, err := mmdbFS.ReadFile("data/asn-ipv4.mmdb")
+	if err != nil {
+		fmt.Println("Error opening asn_v4_data", err)
+	}
+	asn_db_v4, err := maxminddb.FromBytes(asn_v4_data)
 	if err != nil {
 		fmt.Println("Error opening country_db_v4", err)
 	}
 	defer asn_db_v4.Close()
 
-	asn_db_v6, err := maxminddb.Open("data/asn-ipv6.mmdb")
+	asn_v6_data, err := mmdbFS.ReadFile("data/asn-ipv6.mmdb")
+	if err != nil {
+		fmt.Println("Error opening asn_v6_data", err)
+	}
+	asn_db_v6, err := maxminddb.FromBytes(asn_v6_data)
 	if err != nil {
 		fmt.Println("Error opening country_db_v4", err)
 	}

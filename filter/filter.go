@@ -1,6 +1,7 @@
 package filter
 
 import (
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -8,6 +9,8 @@ import (
 	"os"
 	"sync"
 	"time"
+
+	_ "github.com/mattn/go-sqlite3"
 )
 
 // NodeInfo represents the relevant parts of the nodeinfo response
@@ -25,7 +28,41 @@ type NodeInfoWellKnown struct {
 	} `json:"links"`
 }
 
+// Node status constants
+const (
+	StatusPending  = "pending"
+	StatusChecking = "checking"
+	StatusSuccess  = "success"
+	StatusFailed   = "failed"
+)
+
+// initDB initializes the SQLite database
+func initDB() (*sql.DB, error) {
+	db, err := sql.Open("sqlite3", "./node_filter.db")
+	if err != nil {
+		return nil, fmt.Errorf("failed to open database: %w", err)
+	}
+
+	// Create nodes table if it doesn't exist
+	_, err = db.Exec(`
+		CREATE TABLE IF NOT EXISTS nodes (
+			domain TEXT PRIMARY KEY,
+			status TEXT,
+			software TEXT,
+			error TEXT,
+			last_updated TIMESTAMP
+		)
+	`)
+	if err != nil {
+		db.Close()
+		return nil, fmt.Errorf("failed to create table: %w", err)
+	}
+
+	return db, nil
+}
+
 func FilterNodes() {
+	// Open nodes.json file
 	nodes, err := os.ReadFile("nodes.json")
 	if err != nil {
 		fmt.Println("Error reading nodes.json:", err)
@@ -39,28 +76,103 @@ func FilterNodes() {
 		return
 	}
 
+	// Initialize the database
+	db, err := initDB()
+	if err != nil {
+		fmt.Println("Error initializing database:", err)
+		return
+	}
+	defer db.Close()
+
+	// Insert nodes that aren't in the database yet
+	err = initializeNodes(db, nodesList)
+	if err != nil {
+		fmt.Println("Error initializing nodes in database:", err)
+		return
+	}
+
 	// Filter nodes based on software
-	filteredNodes, err := filterNodesBySoftware(nodesList)
+	filteredNodes, err := filterNodesBySoftware(db, nodesList)
 	if err != nil {
 		fmt.Println("Error filtering nodes:", err)
 		return
 	}
 
-	// write filtered nodes to a file
+	// Write filtered nodes to a file
 	filteredNodesFile, err := os.Create("filtered_nodes.json")
 	if err != nil {
 		fmt.Println("Error creating filtered_nodes.json:", err)
 		return
 	}
 	defer filteredNodesFile.Close()
-	json.NewEncoder(filteredNodesFile).Encode(filteredNodes)
+
+	err = json.NewEncoder(filteredNodesFile).Encode(filteredNodes)
+	if err != nil {
+		fmt.Println("Error writing to filtered_nodes.json:", err)
+		return
+	}
+
 	fmt.Println("Filtered nodes written to filtered_nodes.json")
 
-	fmt.Printf("Filtered %d nodes to %d supported nodes\n", len(nodesList), len(filteredNodes))
+	// Get stats
+	total, checked, supported, err := getNodeStats(db)
+	if err != nil {
+		fmt.Println("Error getting node stats:", err)
+		return
+	}
+
+	fmt.Printf("Total nodes: %d, Checked: %d, Supported: %d\n", total, checked, supported)
+}
+
+// initializeNodes inserts nodes into the database if they don't exist
+func initializeNodes(db *sql.DB, nodes []string) error {
+	tx, err := db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	stmt, err := tx.Prepare(`
+		INSERT OR IGNORE INTO nodes (domain, status, last_updated) 
+		VALUES (?, ?, CURRENT_TIMESTAMP)
+	`)
+	if err != nil {
+		return err
+	}
+	defer stmt.Close()
+
+	for _, node := range nodes {
+		_, err := stmt.Exec(node, StatusPending)
+		if err != nil {
+			return err
+		}
+	}
+
+	return tx.Commit()
+}
+
+// getNodeStats returns statistics about the nodes in the database
+func getNodeStats(db *sql.DB) (total int, checked int, supported int, err error) {
+	err = db.QueryRow("SELECT COUNT(*) FROM nodes").Scan(&total)
+	if err != nil {
+		return
+	}
+
+	err = db.QueryRow("SELECT COUNT(*) FROM nodes WHERE status != ?", StatusPending).Scan(&checked)
+	if err != nil {
+		return
+	}
+
+	err = db.QueryRow("SELECT COUNT(*) FROM nodes WHERE status = ? AND software IN ('mastodon', 'pleroma', 'misskey', 'bookwyrm', 'smithereen')", StatusSuccess).Scan(&supported)
+	if err != nil {
+		return
+	}
+
+	return
 }
 
 // filterNodesBySoftware gets nodeinfo for each node and keeps only supported ones
-func filterNodesBySoftware(nodes []string) ([]string, error) {
+func filterNodesBySoftware(db *sql.DB, nodes []string) ([]string, error) {
 	supportedSoftware := map[string]bool{
 		"mastodon":   true,
 		"pleroma":    true,
@@ -93,7 +205,45 @@ func filterNodesBySoftware(nodes []string) ([]string, error) {
 		Timeout: 5 * time.Second,
 	}
 
-	for _, node := range nodes {
+	// First, collect already processed supported nodes
+	rows, err := db.Query(`
+		SELECT domain FROM nodes 
+		WHERE status = ? AND software IN ('mastodon', 'pleroma', 'misskey', 'bookwyrm', 'smithereen')
+	`, StatusSuccess)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var node string
+		if err := rows.Scan(&node); err != nil {
+			return nil, err
+		}
+		resultChan <- node
+	}
+
+	// Then process pending nodes
+	pendingRows, err := db.Query(`
+		SELECT domain FROM nodes 
+		WHERE status = ?
+	`, StatusPending)
+	if err != nil {
+		return nil, err
+	}
+	defer pendingRows.Close()
+
+	var pendingNodes []string
+	for pendingRows.Next() {
+		var node string
+		if err := pendingRows.Scan(&node); err != nil {
+			return nil, err
+		}
+		pendingNodes = append(pendingNodes, node)
+	}
+
+	// Process each pending node
+	for _, node := range pendingNodes {
 		wg.Add(1)
 		semaphore <- struct{}{} // Acquire a slot
 
@@ -103,10 +253,30 @@ func filterNodesBySoftware(nodes []string) ([]string, error) {
 
 			fmt.Printf("Checking software for node: %s\n", node)
 
+			// Update status to checking
+			_, err := db.Exec(`
+				UPDATE nodes 
+				SET status = ?, last_updated = CURRENT_TIMESTAMP 
+				WHERE domain = ?
+			`, StatusChecking, node)
+			if err != nil {
+				fmt.Printf("  Error updating status for %s: %v\n", node, err)
+				return
+			}
+
 			// First, get the nodeinfo link from the well-known endpoint
 			nodeInfoURL, err := getNodeInfoURL(client, node)
 			if err != nil {
 				fmt.Printf("  Skipping %s: %v\n", node, err)
+				// Update status to failed
+				_, dbErr := db.Exec(`
+					UPDATE nodes 
+					SET status = ?, error = ?, last_updated = CURRENT_TIMESTAMP 
+					WHERE domain = ?
+				`, StatusFailed, err.Error(), node)
+				if dbErr != nil {
+					fmt.Printf("  Error updating status for %s: %v\n", node, dbErr)
+				}
 				return
 			}
 
@@ -114,15 +284,42 @@ func filterNodesBySoftware(nodes []string) ([]string, error) {
 			software, err := getNodeSoftware(client, nodeInfoURL)
 			if err != nil {
 				fmt.Printf("  Skipping %s: %v\n", node, err)
+				// Update status to failed
+				_, dbErr := db.Exec(`
+					UPDATE nodes 
+					SET status = ?, error = ?, last_updated = CURRENT_TIMESTAMP 
+					WHERE domain = ?
+				`, StatusFailed, err.Error(), node)
+				if dbErr != nil {
+					fmt.Printf("  Error updating status for %s: %v\n", node, dbErr)
+				}
 				return
 			}
 
 			// Check if it's one of our supported software types
 			if supportedSoftware[software] {
 				fmt.Printf("  Found supported software '%s' for %s\n", software, node)
+				// Update status to success
+				_, dbErr := db.Exec(`
+					UPDATE nodes 
+					SET status = ?, software = ?, last_updated = CURRENT_TIMESTAMP 
+					WHERE domain = ?
+				`, StatusSuccess, software, node)
+				if dbErr != nil {
+					fmt.Printf("  Error updating status for %s: %v\n", node, dbErr)
+				}
 				resultChan <- node
 			} else {
 				fmt.Printf("  Unsupported software '%s' for %s\n", software, node)
+				// Update status to success (we successfully checked it, but it's not supported)
+				_, dbErr := db.Exec(`
+					UPDATE nodes 
+					SET status = ?, software = ?, last_updated = CURRENT_TIMESTAMP 
+					WHERE domain = ?
+				`, StatusSuccess, software, node)
+				if dbErr != nil {
+					fmt.Printf("  Error updating status for %s: %v\n", node, dbErr)
+				}
 			}
 		}(node)
 	}

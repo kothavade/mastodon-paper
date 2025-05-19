@@ -7,11 +7,13 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net"
 	"net/http"
 	"os"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	_ "github.com/mattn/go-sqlite3"
@@ -168,6 +170,23 @@ func CollectData() {
 
 	client := &http.Client{Timeout: 5 * time.Second}
 
+	total := len(nodesList)
+	var processed uint32
+	// 1) start reporter
+	go func() {
+		ticker := time.NewTicker(1 * time.Second)
+		defer ticker.Stop()
+		for range ticker.C {
+			done := atomic.LoadUint32(&processed)
+			log.Printf("Progress: %d/%d nodes processed (%.1f%%)\n",
+				done, total, float64(done)/float64(total)*100,
+			)
+			if int(done) >= total {
+				return
+			}
+		}
+	}()
+
 	jobs := make(chan string, len(nodesList))
 
 	var wg sync.WaitGroup
@@ -177,17 +196,19 @@ func CollectData() {
 			defer wg.Done()
 			for domain := range jobs {
 				collectForNode(db, client, country_db_v4, country_db_v6, asn_db_v4, asn_db_v6, domain)
+				atomic.AddUint32(&processed, 1)
 			}
 		}()
-
-		for _, domain := range nodesList {
-			jobs <- domain
-		}
-		close(jobs)
-
-		wg.Wait()
-		fmt.Println("All nodes processed.")
 	}
+
+	for _, domain := range nodesList {
+		jobs <- domain
+	}
+	close(jobs)
+
+	wg.Wait()
+	fmt.Println("All nodes processed.")
+
 }
 
 func collectForNode(
@@ -235,6 +256,7 @@ func collectForNode(
 		inst.Stats.StatusCount,
 		detectCloudProviderFromOrg(geo.ASName),
 	)
+
 }
 
 func lookupIP(domain string) (string, error) {
@@ -267,7 +289,6 @@ func lookupGeo(ipStr string, asn_reader *maxminddb.Reader, country_reader *maxmi
 	if err := country_reader.Lookup(ip, &countryRec); err != nil {
 		return nil, fmt.Errorf("Country lookup failed: %w", err)
 	}
-	fmt.Printf("got country code %q\n", countryRec.CountryCode)
 
 	return &geoInfo{
 		CountryCode: countryRec.CountryCode,

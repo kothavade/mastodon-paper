@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
 	_ "github.com/mattn/go-sqlite3"
@@ -167,52 +168,73 @@ func CollectData() {
 
 	client := &http.Client{Timeout: 5 * time.Second}
 
-	node := nodesList[3]
+	jobs := make(chan string, len(nodesList))
 
-	updateStatus(db, node, "in_progress")
+	var wg sync.WaitGroup
+	for i := 0; i < maxWorkers; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for domain := range jobs {
+				collectForNode(db, client, country_db_v4, country_db_v6, asn_db_v4, asn_db_v6, domain)
+			}
+		}()
 
-	ip, err := lookupIP(node)
+		for _, domain := range nodesList {
+			jobs <- domain
+		}
+		close(jobs)
+
+		wg.Wait()
+		fmt.Println("All nodes processed.")
+	}
+}
+
+func collectForNode(
+	db *sql.DB, client *http.Client,
+	countryDBv4, countryDBv6, asnDBv4, asnDBv6 *maxminddb.Reader,
+	domain string,
+) {
+	updateStatus(db, domain, StatusChecking)
+
+	ip, err := lookupIP(domain)
 	if err != nil {
-		updateStatus(db, node, StatusFailed)
-		fmt.Println("Error looking up IP", err)
+		updateStatus(db, domain, StatusFailed)
 		return
 	}
 
 	version, err := IPVersion(ip)
 	if err != nil {
-		fmt.Println("Error looking up IP Version", err)
-		updateStatus(db, node, StatusFailed)
-	}
-	var geo *geoInfo
-	switch version {
-	case "ipv4":
-		geo, err = lookupGeo(ip, asn_db_v4, country_db_v4)
-	case "ipv6":
-		geo, err = lookupGeo(ip, asn_db_v6, country_db_v6)
-	default:
-		err = fmt.Errorf("unknown IP version")
-	}
-	if err != nil {
-		fmt.Println("Error looking up Geo", err)
-		updateStatus(db, node, StatusFailed)
-	}
-
-	// 4) Mastodon instance stats
-	inst, err := fetchInstanceStats(node, client)
-	if err != nil {
-		fmt.Println("Error fetching Instance Stats", err)
-		updateStatus(db, node, "failed")
+		updateStatus(db, domain, StatusFailed)
 		return
 	}
 
-	// 5) Write back as finished
-	updateNodeInfo(db, node,
+	var geo *geoInfo
+	switch version {
+	case "ipv4":
+		geo, err = lookupGeo(ip, asnDBv4, countryDBv4)
+	default:
+		geo, err = lookupGeo(ip, asnDBv6, countryDBv6)
+	}
+	if err != nil {
+		updateStatus(db, domain, StatusFailed)
+		return
+	}
+
+	inst, err := fetchInstanceStats(domain, client)
+	if err != nil {
+		updateStatus(db, domain, StatusFailed)
+		return
+	}
+
+	updateNodeInfo(db, domain,
 		ip,
 		fmt.Sprintf("%d", geo.ASN),
 		geo.CountryCode,
 		inst.Stats.UserCount,
 		inst.Stats.StatusCount,
-		detectCloudProviderFromOrg(geo.ASName))
+		detectCloudProviderFromOrg(geo.ASName),
+	)
 }
 
 func lookupIP(domain string) (string, error) {

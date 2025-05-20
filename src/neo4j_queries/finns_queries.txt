@@ -1,0 +1,39 @@
+Average path length query
+
+// 1) Gather all node IDs
+MATCH (n:MastodonNode)
+WITH collect(id(n)) AS allNodeIds
+
+// 2) Sample 1000 random source nodes
+MATCH (m:MastodonNode)
+WITH allNodeIds, m
+ORDER BY rand()
+LIMIT 1000
+WITH allNodeIds, collect(id(m)) AS sourceIds
+
+// 3) For each source, stream Dijkstra to every node in allNodeIds
+UNWIND sourceIds AS sourceId
+CALL gds.shortestPath.dijkstra.stream(
+  'mastodonPeerGraph',
+  {
+    sourceNode:   sourceId,
+    targetNodes:  allNodeIds
+  }
+)
+YIELD sourceNode, targetNode, totalCost
+
+// 4) Only count each unordered pair once (and drop self‐paths)
+WHERE sourceNode < targetNode
+
+// 5) Aggregate your sample’s stats
+RETURN
+  avg(totalCost)   AS estimatedAvgPathLength,
+  min(totalCost)   AS minPathLength,
+  max(totalCost)   AS maxPathLength,
+  stdev(totalCost) AS stdDevPathLength,
+  count(*)         AS pairsConsidered;
+
+
+
+
+  

@@ -261,3 +261,18 @@ From @most_peered_instances, we see that the most peered instance is `mastodon.s
 )<peers_users_posts>
 
 We see that there is a positive correlation between the number of peers and the number of users and posts in @peers_users_posts.
+
+
+== Average Path Length
+#let average_path_length = csv("average_path_length.csv").slice(1)
+#figure(
+  caption: [Average path length between any 2 points],
+  table(
+    columns: (auto, auto, auto, auto, auto),
+    align: (right, right, right, right, right),
+    table.header[Est. Avg Path Length][Min Length][Max Length][Standard Deviation][Pairs Considered],
+    ..average_path_length.slice(0, 1).flatten(),
+  ),
+)<average_path_length>
+
+To estimate the Mastodon network’s average shortest‐path length, we randomly sample 1000 nodes of 9000 as source nodes. For each source, we run Dijkstra's and find the path length to every other node. Finally, we aggregate the sampled distances with  avg(), min(), max(), and stdev() functions to yield estimates of the global mean, minimum, maximum, and standard deviation of path lengths. The result is an average path lenngth of 1.58 with standard deviation of 0.49.That’s exceptionally low, and most pairs are either directly peering or share exactly one intermediary. This indicates a very well connected network. With the same number of nodes and average number of degree, the Erdős–Rényi null model tells predicts the average path length between any 2 nodes to be around 1.13, effectively making this an almost complete graph. Due to how tightly connected this network is, we can also make the assumption peers aren't selected based on having similar content, since everyone is connected to one another.

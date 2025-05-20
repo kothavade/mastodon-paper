@@ -119,9 +119,11 @@ Most instances are not hosted on cloud providers, and among those that are, surp
 
 == Autonomous Systems
 
-#let asn_cloud_analysis = csv("asn_cloud_analysis.csv").slice(1)
-#let cloud_instances = asn_cloud_analysis.filter(x => x.at(3) == "1")
-#let non_cloud_instances = asn_cloud_analysis.filter(x => x.at(3) == "0")
+#let asn_cloud_analysis = (
+  csv("asn_cloud_analysis.csv").slice(1).map(x => (int(x.at(0)), int(x.at(1)), x.at(2), int(x.at(3)), int(x.at(4))))
+)
+#let cloud_instances = asn_cloud_analysis.filter(x => x.at(3) == 1)
+#let non_cloud_instances = asn_cloud_analysis.filter(x => x.at(3) == 0)
 #figure(
   caption: [Distribution of IPs across ASes according to their size (measured by their AS rank).],
   lq.diagram(
@@ -157,15 +159,15 @@ We then plotted the number of IP addresses per AS, colored by whether the AS is 
     .rev()
     .slice(0, n_top_as)
     .map(x => (
-      x.at(1),
-      x.at(0),
+      [#x.at(0)],
       x.at(2),
-      [#{ int(x.at(4)) }],
+      [#x.at(1)],
+      [#x.at(4)],
       [#{ pct(int(x.at(4)) / total_instances) }],
     ))
 )
 #let top_as_n_share = (
-  asn_cloud_analysis.sorted(key: x => int(x.at(4))).rev().slice(0, n_top_as).map(x => int(x.at(4))).sum()
+  asn_cloud_analysis.sorted(key: x => x.at(4)).rev().slice(0, n_top_as).map(x => x.at(4)).sum()
 )
 #let top_as_n_share = pct(top_as_n_share / total_instances)
 #figure(
@@ -195,10 +197,15 @@ We then plotted the number of IP addresses per AS, colored by whether the AS is 
 
 From @most_peered_instances, we see that the most peered instance is `mastodon.social`, with #most_peered_instances.at(1).at(1) peers. There appears to be a trend that the more peered an instance is, the more users and posts it has, but this is not strict.
 
-#let most_peered_instances = most_peered_instances.filter(x => int(x.at(2)) > 0 and int(x.at(3)) > 0).slice(0, 1000)
-#let peers = most_peered_instances.map(x => int(x.at(1)))
-#let users = most_peered_instances.map(x => int(x.at(2)))
-#let posts = most_peered_instances.map(x => int(x.at(3)))
+#let most_peered_instances = (
+  most_peered_instances
+    .map(x => (x.at(0), int(x.at(1)), int(x.at(2)), int(x.at(3))))
+    .filter(x => x.at(2) > 0 and x.at(3) > 0)
+    .slice(0, 1000)
+)
+#let peers = most_peered_instances.map(x => x.at(1))
+#let users = most_peered_instances.map(x => x.at(2))
+#let posts = most_peered_instances.map(x => x.at(3))
 #figure(
   caption: [Users and Posts vs Peers for 1000 Most Peered Instances],
   lq.diagram(

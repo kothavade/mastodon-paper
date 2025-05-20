@@ -146,7 +146,7 @@ Most instances are not hosted on cloud providers, and among those that are, surp
   ),
 )<as_distribution>
 
-We mapped IP addresses to Autonomous Systems using GeoLite2, found the CAIDA AS Rank for each AS. According to CAIDA, the AS Rank is a measure of the influcence of an AS to the global routing system, as calculated by their sizes, peering agreements, and more.
+We mapped IP addresses to Autonomous Systems using GeoLite2, found the CAIDA AS Rank for each AS. According to CAIDA, the AS Rank is a measure of the influcence of an AS to the global routing system, as calculated by their sizes, peering agreements, and more @as_rank.
 
 We then plotted the number of IP addresses per AS, colored by whether the AS is a cloud provider or not. We see that the cloud providers are disproportionately large, and that there are many more IP addresses in the cloud providers than in the non-cloud providers.
 

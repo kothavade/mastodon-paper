@@ -295,7 +295,7 @@ These failures highlight the unique structure of the Mastodon network: despite b
 
 = Conclusion
 
-In this paper, analyzed the Mastodon network, examining its geographical distribution, infrastructure characteristics, and connectivity patterns. Our findings reveal several important insights about this decentralized social media platform.
+In this paper, we analyzed the Mastodon network, examining its geographical distribution, infrastructure characteristics, and connectivity patterns. Our findings reveal several important insights about this decentralized social media platform.
 
 First, we found that Mastodon instances are predominantly concentrated in a handful of countries, with the United States, France, Germany, Portugal, and Japan hosting the majority. This geographical concentration suggests that despite Mastodon's decentralized architecture, its adoption remains uneven globally. Given the Fediverse's reputation as a network largely consisting of technical, niche communities, this meets our expectations.
 

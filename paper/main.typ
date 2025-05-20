@@ -48,7 +48,7 @@ Upon collecting this data about nodes in a database, we use the neo4j graph data
 
 We believe that this is a representative dataset of the Mastodon network, and thus feel that the analyses we conduct from this graph dataset represent the true network well. This is supported by the fact that statistics published by the Mastodon project state that there are 8739 instances and 9651558 users, which we are close to--especially considering that we count non-Mastodon software which supports the protocol @mastodon_statistics.
 
-In the collection and analysis of this data, we created a Go program which connects to peers to ensure they are alive, determines whether their software is Mastodon API compatible, and then uses the `instance` API to collect user and post counts for all instances. This program further creates a number of SQLite databases and CSV files which are used for the analysis in this paper, directly or via neo4j. In addition, we created a number of Python scripts to process the data and create some of the visualizations. These are all available on GitHub @github.
+In the collection and analysis of this data, we created a Go program which connects to peers to ensure they are alive, determines whether their software is Mastodon API compatible, and then uses the `instance` API to collect user and post counts for all instances. This program further creates a number of SQLite databases and CSV files which are used for the analysis in this paper, directly or via neo4j. In addition, we created a number of Python scripts to process the data and create some of the visualizations, using Pandas, Mathplotlib, and GeoPandas. These are all available on GitHub @github.
 
 = Analysis
 == Location of Instances

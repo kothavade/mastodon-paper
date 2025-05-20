@@ -182,26 +182,27 @@ We then plotted the number of IP addresses per AS, colored by whether the AS is 
 
 
 == Most Peered Instances
-#let most_peered_instances = csv("most-peered-instances.csv").slice(1, 11)
+#let most_peered_instances = csv("most-peered-instances.csv").slice(1)
 #figure(
   caption: [Top 10 Most Peered Instances],
   table(
     columns: (auto, auto, auto, auto),
     align: (left, right, right, right),
     table.header[Instance][Peers][Users][Posts],
-    ..most_peered_instances.flatten(),
+    ..most_peered_instances.slice(0,11).flatten(),
   ),
 )<most_peered_instances>
 
 From @most_peered_instances, we see that the most peered instance is `mastodon.social`, with #most_peered_instances.at(1).at(1) peers. There appears to be a trend that the more peered an instance is, the more users and posts it has, but this is not strict.
 
+#let most_peered_instances = most_peered_instances.filter(x => int(x.at(2)) > 0 and int(x.at(3)) > 0).slice(0, 1000)
 #let peers = most_peered_instances.map(x => int(x.at(1)))
 #let users = most_peered_instances.map(x => int(x.at(2)))
 #let posts = most_peered_instances.map(x => int(x.at(3)))
 #figure(
-  caption: [Users and Posts vs Peers],
+  caption: [Users and Posts vs Peers for 1000 Most Peered Instances],
   lq.diagram(
-    lq.plot(
+    lq.scatter(
       peers,
       users,
       color: blue,
@@ -212,7 +213,7 @@ From @most_peered_instances, we see that the most peered instance is `mastodon.s
     xscale: "log",
     yscale: "log",
     lq.yaxis(
-      lq.plot(
+      lq.scatter(
         peers,
         posts,
         color: red,
@@ -228,6 +229,3 @@ From @most_peered_instances, we see that the most peered instance is `mastodon.s
 )<peers_users_posts>
 
 We see that there is a positive correlation between the number of peers and the number of users and posts in @peers_users_posts.
-
-
-

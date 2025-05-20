@@ -21,7 +21,7 @@ country_counts.columns = ["country_code", "domain_count"]
 print("\nDomain counts per country:")
 print(country_counts.head())
 
-world = geopandas.read_file("zip://110m_cultural.zip")
+world = geopandas.read_file("zip://paper/110m_cultural.zip")
 merged_data = world.merge(
     country_counts, left_on="ISO_A2", right_on="country_code", how="left"
 )

@@ -19,6 +19,7 @@ def get_as_rank(asn):
       asn(asn: "%s") {
         asn
         rank
+        asnName
       }
     }
     """
@@ -30,11 +31,14 @@ def get_as_rank(asn):
         if response.status_code == 200:
             data = response.json()
             if data.get("data", {}).get("asn"):
-                return data["data"]["asn"].get("rank", 0)
-        return 999999
+                return {
+                    "rank": data["data"]["asn"].get("rank", 0),
+                    "name": data["data"]["asn"].get("asnName", "Unknown")
+                }
+        return {"rank": 999999, "name": "Unknown"}
     except Exception as e:
         print(f"Error fetching rank for ASN {asn}: {str(e)}")
-        return 999999
+        return {"rank": 999999, "name": "Unknown"}
 
 
 conn = sqlite3.connect(db_path)
@@ -55,20 +59,24 @@ query = f"""
 
 df = pd.read_sql_query(query, conn)
 
-print("\nFetching AS ranks from CAIDA ASRank API...")
+print("\nFetching AS ranks and names from CAIDA ASRank API...")
 ranks = {}
+names = {}
 
 for i, row in enumerate(df.itertuples()):
     asn = str(row.asn)
     if asn not in ranks:
-        ranks[asn] = get_as_rank(asn)
+        result = get_as_rank(asn)
+        ranks[asn] = result["rank"]
+        names[asn] = result["name"]
         if i % 10 == 0 and i > 0:
             print(f"Processed {i} ASNs...")
             time.sleep(1)
 
 df["as_rank"] = df["asn"].astype(str).map(ranks)
+df["as_name"] = df["asn"].astype(str).map(names)
 
-df = df[["as_rank", "asn", "is_cloud", "instance_count"]]
+df = df[["as_rank", "asn", "as_name", "is_cloud", "instance_count"]]
 
 df = df.sort_values("as_rank")
 

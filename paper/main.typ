@@ -1,7 +1,7 @@
 #import "@preview/charged-ieee:0.1.3": ieee
 #import "@preview/flagada:0.1.0": *
 #import "@preview/lilaq:0.3.0" as lq
-
+#import "@preview/big-todo:0.2.0": *
 #show: ieee.with(
   title: [Mastodon Network Analysis],
   abstract: [
@@ -34,14 +34,15 @@
 #let cc_flag(x) = [#flag(x) #x]
 #let pct(x) = [#{ calc.round(x * 100, digits: 2) }%]
 
+#todo_outline
 
 = Introduction
 We want to explore characteristics of the Mastodon network related to the geographical distribution of nodes, cloud providers nodes are hosted on, and more. This paper is largely inspired by "Design and evaluation of IPFS: a storage layer for the decentralized web", which demonstrates the kinds of measurments that could be done on a decentralized network @ipfs.
 
 = Methodology
-While writing a crawler is simple in principle, to mitigate time constraints we began with a seed list of alive nodes created by an external, open-source Fediverse crawler. This crawler is updated every 6 hours. From the list created by this crawler, we filter down to Fediverse nodes hosting Mastodon or Mastodon-compatible software (as opposed to, for example, WordPress), and then to nodes which supported the `peers` API we leverage to determine node connectivity.
+While writing a crawler is simple in principle, to mitigate time constraints we began with a seed list of alive nodes created by an external, open-source Fediverse crawler. #todo([cite crawler], inline: true) This crawler is updated every 6 hours. From the list created by this crawler, we filter down to Fediverse nodes hosting Mastodon or Mastodon-compatible software (as opposed to, for example, WordPress), and then to nodes which supported the `peers` API we leverage to determine node connectivity.
 
-From this filtered list of nodes, we then collected data about each node leveraging the MaxMind GeoIP databases and by resolving the IPs for the domains, and looking up their ASN, AS organization names, country codes. Furthermore, we use an `instance` API to collect user and post counts for all instances.
+From this filtered list of nodes, we then collected data about each node leveraging the MaxMind GeoIP databases and by resolving the IPs for the domains, and looking up their ASN, AS organization names, country codes. #todo([cite MaxMind], inline: true) Furthermore, we use an `instance` API to collect user and post counts for all instances.
 
 Upon collecting this data about nodes in a database, we use the neo4j graph database to insert all nodes, the properties of these nodes, and finally create `PEERS_WITH` relationships between peers as defined by the aforementioned `peers` API.
 
@@ -73,7 +74,7 @@ We believe that this is a representative dataset of the Mastodon network, and th
   // placement: top,
   table(
     align: (left, left, right, right),
-    columns: (auto, 6em, auto, auto),
+    columns: (auto, auto, auto, auto),
     table.header[Rank][Country][Count][Share],
     ..countries_with_share.flatten(),
     table.footer[Total][][#total_instances][],
@@ -103,7 +104,7 @@ As @country_table shows, the majority of instances are in the United States, fol
   caption: [Instance Counts by Cloud Provider],
   // placement: top,
   table(
-    columns: (auto, 10em, auto, auto),
+    columns: (auto, auto, auto, auto),
     align: (left, left, right, right),
     table.header[Rank][Cloud Provider][Count][Share],
     ..ranked_cloud_providers.flatten(),
@@ -114,26 +115,25 @@ As @country_table shows, the majority of instances are in the United States, fol
 #let total_cloud_instances = cloud_providers.slice(1).map(x => int(x.at(1))).sum()
 #let cloud_share = pct(total_cloud_instances / total_instances)
 
-Most instances are not hosted on cloud providers, and among those that are, surprisingly the most common are none of the big 3, but instead OVH, Hetzner, and DigitalOcean. In total, we see that #cloud_share of instances are hosted on cloud providers, indicating that the majority of instances are run on personal servers. From this, we can infer that many Mastodon administrators are...
+Most instances are not hosted on cloud providers, and among those that are, surprisingly the most common are none of the big 3, but instead OVH, Hetzner, and DigitalOcean. In total, we see that #cloud_share of instances are hosted on cloud providers, indicating that the majority of instances are run on personal servers. From this, we can infer that many Mastodon administrators are #todo([smth about relevance of non-cloud], inline: true)
 
 == Autonomous Systems
 
 #let asn_cloud_analysis = csv("asn_cloud_analysis.csv").slice(1)
-#let cloud_instances = asn_cloud_analysis.filter(x => x.at(2) == "1")
-#let non_cloud_instances = asn_cloud_analysis.filter(x => x.at(2) == "0")
-#show: lq.set-legend(position: top + left)
+#let cloud_instances = asn_cloud_analysis.filter(x => x.at(3) == "1")
+#let non_cloud_instances = asn_cloud_analysis.filter(x => x.at(3) == "0")
 #figure(
   caption: [Distribution of IPs across ASes according to their size (measured by their AS rank).],
   lq.diagram(
     lq.scatter(
       non_cloud_instances.map(x => int(x.at(0))),
-      non_cloud_instances.map(x => int(x.at(3))),
+      non_cloud_instances.map(x => int(x.at(4))),
       color: blue,
       label: [Non Cloud],
     ),
     lq.scatter(
       cloud_instances.map(x => int(x.at(0))),
-      cloud_instances.map(x => int(x.at(3))),
+      cloud_instances.map(x => int(x.at(4))),
       color: red,
       label: [Cloud],
     ),
@@ -142,6 +142,7 @@ Most instances are not hosted on cloud providers, and among those that are, surp
     xlabel: "Autonomous System Rank",
     ylabel: "IP Address Count",
     title: "AS Distribution",
+    legend: (position: left + top),
   ),
 )<as_distribution>
 
@@ -149,7 +150,84 @@ We mapped IP addresses to Autonomous Systems using GeoLite2, found the CAIDA AS 
 
 We then plotted the number of IP addresses per AS, colored by whether the AS is a cloud provider or not. We see that the cloud providers are disproportionately large, and that there are many more IP addresses in the cloud providers than in the non-cloud providers.
 
+#let n_top_as = 5
+#let top_as_names = (
+  asn_cloud_analysis
+    .sorted(key: x => int(x.at(4)))
+    .rev()
+    .slice(0, n_top_as)
+    .map(x => (
+      x.at(1),
+      x.at(0),
+      x.at(2),
+      [#{ int(x.at(4)) }],
+      [#{ pct(int(x.at(4)) / total_instances) }],
+    ))
+)
+#let top_as_n_share = (
+  asn_cloud_analysis.sorted(key: x => int(x.at(4))).rev().slice(0, n_top_as).map(x => int(x.at(4))).sum()
+)
+#let top_as_n_share = pct(top_as_n_share / total_instances)
+#figure(
+  caption: [Autonomous Systems covering $>50%$ of all found IP Addresses],
+  table(
+    columns: (auto, auto, auto, auto, auto),
+    align: (left, left, right, right, right),
+    table.header[ASN][AS Rank][AS Name][Count][Share],
+    ..top_as_names.flatten(),
+    table.footer[Total][][][#total_instances][#top_as_n_share],
+  ),
+)
 
+
+
+== Most Peered Instances
+#let most_peered_instances = csv("most-peered-instances.csv").slice(1, 11)
+#figure(
+  caption: [Top 10 Most Peered Instances],
+  table(
+    columns: (auto, auto, auto, auto),
+    align: (left, right, right, right),
+    table.header[Instance][Peers][Users][Posts],
+    ..most_peered_instances.flatten(),
+  ),
+)<most_peered_instances>
+
+From @most_peered_instances, we see that the most peered instance is `mastodon.social`, with #most_peered_instances.at(1).at(1) peers. There appears to be a trend that the more peered an instance is, the more users and posts it has, but this is not strict.
+
+#let peers = most_peered_instances.map(x => int(x.at(1)))
+#let users = most_peered_instances.map(x => int(x.at(2)))
+#let posts = most_peered_instances.map(x => int(x.at(3)))
+#figure(
+  caption: [Users and Posts vs Peers],
+  lq.diagram(
+    lq.plot(
+      peers,
+      users,
+      color: blue,
+      label: [Users],
+    ),
+    xlabel: "Peers",
+    ylabel: "Users",
+    xscale: "log",
+    yscale: "log",
+    lq.yaxis(
+      lq.plot(
+        peers,
+        posts,
+        color: red,
+        label: [Posts],
+      ),
+      position: right,
+      label: [Posts],
+      scale: "log",
+    ),
+    legend: (position: left + top),
+    title: "Users and Posts vs Peers",
+  ),
+)<peers_users_posts>
+
+We see that there is a positive correlation between the number of peers and the number of users and posts in @peers_users_posts.
 
 
 

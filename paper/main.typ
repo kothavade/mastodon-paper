@@ -115,7 +115,7 @@ As @country_table shows, the majority of instances are in the United States, fol
 #let total_cloud_instances = cloud_providers.slice(1).map(x => int(x.at(1))).sum()
 #let cloud_share = pct(total_cloud_instances / total_instances)
 
-Most instances are not hosted on cloud providers, and among those that are, surprisingly the most common are none of the big 3, but instead OVH, Hetzner, and DigitalOcean. In total, we see that #cloud_share of instances are hosted on cloud providers, indicating that the majority of instances are run on personal servers. From this, we can infer that many Mastodon administrators are #todo([smth about relevance of non-cloud], inline: true)
+Most instances are not hosted on cloud providers, and among those that are, surprisingly the most common are none of the big 3, but instead OVH, Hetzner, and DigitalOcean. In total, we see that #cloud_share of instances are hosted on cloud providers, indicating that the majority of instances are run on personal servers. From this, we can infer that many Mastodon administrators are running Mastodon servers in the cloud. This raises some concerns over the concentration of peers in specific networks.
 
 == Autonomous Systems
 

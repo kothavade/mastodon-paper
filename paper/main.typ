@@ -53,7 +53,7 @@ In the collection and analysis of this data, we created a Go program which conne
 = Analysis
 == Location of Instances
 #figure(
-  caption: [Heatmap of Instance Locations],
+  caption: [Choropleth of Instance Locations],
   // placement: top,
   image("map.png"),
 )<map>
@@ -279,4 +279,30 @@ We see that there is a positive correlation between the number of peers and the 
   ),
 )<average_path_length>
 
-To estimate the Mastodon network’s average shortest‐path length, we randomly sample 1000 nodes of 9000 as source nodes. For each source, we run Dijkstra's and find the path length to every other node. Finally, we aggregate the sampled distances with `avg()`, `min()`, `max()`, and `stdev()` functions to yield estimates of the global mean, minimum, maximum, and standard deviation of path lengths. The result is an average path lenngth of 1.58 with standard deviation of 0.49.That’s exceptionally low, and most pairs are either directly peering or share exactly one intermediary. This indicates a very well connected network. With the same number of nodes and average number of degree, the Erdős–Rényi null model tells predicts the average path length between any 2 nodes to be around 1.13, effectively making this an almost complete graph. Due to how tightly connected this network is, we can also make the assumption peers aren't selected based on having similar content, since everyone is connected to one another.
+To estimate the Mastodon network's average shortest‐path length, we randomly sample 1000 nodes of 9000 as source nodes. For each source, we run Dijkstra's and find the path length to every other node. Finally, we aggregate the sampled distances with `avg()`, `min()`, `max()`, and `stdev()` functions to yield estimates of the global mean, minimum, maximum, and standard deviation of path lengths. The result is an average path lenngth of 1.58 with standard deviation of 0.49.That's exceptionally low, and most pairs are either directly peering or share exactly one intermediary. This indicates a very well connected network. With the same number of nodes and average number of degree, the Erdős–Rényi null model tells predicts the average path length between any 2 nodes to be around 1.13, effectively making this an almost complete graph. Due to how tightly connected this network is, we can also make the assumption peers aren't selected based on having similar content, since everyone is connected to one another.
+
+== Community Detection Limitations
+
+We attempted to apply several community detection algorithms from Neo4j's Graph Data Science (GDS) library to identify potential clusters within the Mastodon network @neo4j_gds. However, all these attempts proved unsuccessful due to the exceptionally high connectivity of the network as evidenced by the average path length statistics in @average_path_length.
+
+The Weakly Connected Components (WCC) algorithm, which identifies groups of nodes that are connected to each other through any path regardless of direction, failed to produce meaningful results. With an average path length of 1.58 and a maximum of only 3.0, nearly all nodes were placed into a single giant component, providing no useful partitioning of the network.
+
+Similarly, the Louvain Modularity algorithm, which detects communities by optimizing modularity (the density of connections within communities versus connections between communities), could not identify distinct communities. The algorithm relies on finding areas with higher internal than external connectivity, but with most instances being only one or two hops away from any other instance, there were no clear boundaries for community formation.
+
+The Label Propagation algorithm, which works by propagating labels through the network and forming communities of nodes that share the same label, also failed to converge to meaningful communities. The extremely high interconnectivity meant that labels propagated too quickly across the entire network, again resulting in essentially a single community.
+
+These failures highlight the unique structure of the Mastodon network: despite being decentralized in terms of governance and operation, its instance connectivity patterns resemble those of a nearly complete graph. This suggests that while Mastodon instances may vary widely in terms of content focus, user base, and operation, they maintain a remarkably high level of technical interconnection, prioritizing comprehensive network access over community-based peering.
+
+= Conclusion
+
+In this paper, we conducted a comprehensive analysis of the Mastodon network, examining its geographical distribution, infrastructure characteristics, and connectivity patterns. Our findings reveal several important insights about this decentralized social media platform.
+
+First, we found that Mastodon instances are predominantly concentrated in a handful of countries, with the United States, France, Germany, Portugal, and Japan hosting the majority. This geographical concentration suggests that despite Mastodon's decentralized architecture, its adoption remains uneven globally.
+
+Second, our infrastructure analysis revealed that most Mastodon instances are not hosted on major cloud providers but are instead operated on personal servers or smaller hosting services. This aligns with the Fediverse's ethos of decentralization and independence from large corporate infrastructure.
+
+Third, and perhaps most striking, was our discovery of the Mastodon network's remarkably high connectivity. With an average path length of just 1.58 between any two instances, the network resembles an almost complete graph where most nodes are either directly connected or separated by a single intermediary. This high level of connectivity rendered traditional community detection algorithms ineffective, as the network lacks the distinct clusters or communities typically found in other social networks.
+
+These findings suggest that while Mastodon achieves decentralization in terms of governance and instance ownership, its technical connectivity pattern is highly integrated. Instances prioritize comprehensive connectivity across the network rather than forming isolated communities, ensuring that content can flow freely throughout the Fediverse regardless of which instance a user joins.
+
+This research contributes to our understanding of decentralized social networks and highlights the unique characteristics of the Mastodon ecosystem. Future work could explore the evolution of this connectivity over time, investigate the social and content-based relationships between instances beyond technical connections, and examine how this high connectivity affects content moderation and information diffusion across the network.

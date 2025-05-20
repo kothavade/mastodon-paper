@@ -13,14 +13,12 @@ import (
 	_ "github.com/mattn/go-sqlite3"
 )
 
-// NodeInfo represents the relevant parts of the nodeinfo response
 type NodeInfo struct {
 	Software struct {
 		Name string `json:"name"`
 	} `json:"software"`
 }
 
-// NodeInfoWellKnown represents the well-known nodeinfo response
 type NodeInfoWellKnown struct {
 	Links []struct {
 		Rel  string `json:"rel"`
@@ -28,7 +26,6 @@ type NodeInfoWellKnown struct {
 	} `json:"links"`
 }
 
-// Node status constants
 const (
 	StatusPending  = "pending"
 	StatusChecking = "checking"
@@ -36,14 +33,12 @@ const (
 	StatusFailed   = "failed"
 )
 
-// initDB initializes the SQLite database
 func initDB() (*sql.DB, error) {
 	db, err := sql.Open("sqlite3", "./node_filter.db")
 	if err != nil {
 		return nil, fmt.Errorf("failed to open database: %w", err)
 	}
 
-	// Create nodes table if it doesn't exist
 	_, err = db.Exec(`
 		CREATE TABLE IF NOT EXISTS nodes (
 			domain TEXT PRIMARY KEY,
@@ -62,7 +57,6 @@ func initDB() (*sql.DB, error) {
 }
 
 func FilterNodes() {
-	// Open nodes.json file
 	nodes, err := os.ReadFile("nodes.json")
 	if err != nil {
 		fmt.Println("Error reading nodes.json:", err)
@@ -76,7 +70,6 @@ func FilterNodes() {
 		return
 	}
 
-	// Initialize the database
 	db, err := initDB()
 	if err != nil {
 		fmt.Println("Error initializing database:", err)
@@ -84,21 +77,18 @@ func FilterNodes() {
 	}
 	defer db.Close()
 
-	// Insert nodes that aren't in the database yet
 	err = initializeNodes(db, nodesList)
 	if err != nil {
 		fmt.Println("Error initializing nodes in database:", err)
 		return
 	}
 
-	// Filter nodes based on software
 	filteredNodes, err := filterNodesBySoftware(db, nodesList)
 	if err != nil {
 		fmt.Println("Error filtering nodes:", err)
 		return
 	}
 
-	// Write filtered nodes to a file
 	filteredNodesFile, err := os.Create("filtered_nodes.json")
 	if err != nil {
 		fmt.Println("Error creating filtered_nodes.json:", err)
@@ -114,7 +104,6 @@ func FilterNodes() {
 
 	fmt.Println("Filtered nodes written to filtered_nodes.json")
 
-	// Get stats
 	total, checked, supported, err := getNodeStats(db)
 	if err != nil {
 		fmt.Println("Error getting node stats:", err)
@@ -124,7 +113,6 @@ func FilterNodes() {
 	fmt.Printf("Total nodes: %d, Checked: %d, Supported: %d\n", total, checked, supported)
 }
 
-// initializeNodes inserts nodes into the database if they don't exist
 func initializeNodes(db *sql.DB, nodes []string) error {
 	tx, err := db.Begin()
 	if err != nil {
@@ -151,7 +139,6 @@ func initializeNodes(db *sql.DB, nodes []string) error {
 	return tx.Commit()
 }
 
-// getNodeStats returns statistics about the nodes in the database
 func getNodeStats(db *sql.DB) (total int, checked int, supported int, err error) {
 	err = db.QueryRow("SELECT COUNT(*) FROM nodes").Scan(&total)
 	if err != nil {
@@ -171,7 +158,6 @@ func getNodeStats(db *sql.DB) (total int, checked int, supported int, err error)
 	return
 }
 
-// filterNodesBySoftware gets nodeinfo for each node and keeps only supported ones
 func filterNodesBySoftware(db *sql.DB, nodes []string) ([]string, error) {
 	supportedSoftware := map[string]bool{
 		"mastodon":   true,
@@ -181,17 +167,13 @@ func filterNodesBySoftware(db *sql.DB, nodes []string) ([]string, error) {
 		"smithereen": true,
 	}
 
-	// Create a channel to receive results from goroutines
 	resultChan := make(chan string)
 
-	// Use a wait group to know when all goroutines are done
 	var wg sync.WaitGroup
 
-	// Limit the number of concurrent goroutines to avoid overwhelming the system
 	concurrencyLimit := 10
 	semaphore := make(chan struct{}, concurrencyLimit)
 
-	// Start collecting results in the background
 	var filteredNodes []string
 	done := make(chan struct{})
 	go func() {
@@ -245,7 +227,7 @@ func filterNodesBySoftware(db *sql.DB, nodes []string) ([]string, error) {
 	// Process each pending node
 	for _, node := range pendingNodes {
 		wg.Add(1)
-		semaphore <- struct{}{} // Acquire a slot
+		semaphore <- struct{}{}
 
 		go func(node string) {
 			defer wg.Done()
@@ -253,7 +235,6 @@ func filterNodesBySoftware(db *sql.DB, nodes []string) ([]string, error) {
 
 			fmt.Printf("Checking software for node: %s\n", node)
 
-			// Update status to checking
 			_, err := db.Exec(`
 				UPDATE nodes 
 				SET status = ?, last_updated = CURRENT_TIMESTAMP 
@@ -264,11 +245,9 @@ func filterNodesBySoftware(db *sql.DB, nodes []string) ([]string, error) {
 				return
 			}
 
-			// First, get the nodeinfo link from the well-known endpoint
 			nodeInfoURL, err := getNodeInfoURL(client, node)
 			if err != nil {
 				fmt.Printf("  Skipping %s: %v\n", node, err)
-				// Update status to failed
 				_, dbErr := db.Exec(`
 					UPDATE nodes 
 					SET status = ?, error = ?, last_updated = CURRENT_TIMESTAMP 
@@ -280,11 +259,9 @@ func filterNodesBySoftware(db *sql.DB, nodes []string) ([]string, error) {
 				return
 			}
 
-			// Then fetch the actual nodeinfo
 			software, err := getNodeSoftware(client, nodeInfoURL)
 			if err != nil {
 				fmt.Printf("  Skipping %s: %v\n", node, err)
-				// Update status to failed
 				_, dbErr := db.Exec(`
 					UPDATE nodes 
 					SET status = ?, error = ?, last_updated = CURRENT_TIMESTAMP 
@@ -296,10 +273,8 @@ func filterNodesBySoftware(db *sql.DB, nodes []string) ([]string, error) {
 				return
 			}
 
-			// Check if it's one of our supported software types
 			if supportedSoftware[software] {
 				fmt.Printf("  Found supported software '%s' for %s\n", software, node)
-				// Update status to success
 				_, dbErr := db.Exec(`
 					UPDATE nodes 
 					SET status = ?, software = ?, last_updated = CURRENT_TIMESTAMP 
@@ -311,7 +286,6 @@ func filterNodesBySoftware(db *sql.DB, nodes []string) ([]string, error) {
 				resultChan <- node
 			} else {
 				fmt.Printf("  Unsupported software '%s' for %s\n", software, node)
-				// Update status to success (we successfully checked it, but it's not supported)
 				_, dbErr := db.Exec(`
 					UPDATE nodes 
 					SET status = ?, software = ?, last_updated = CURRENT_TIMESTAMP 
@@ -324,17 +298,14 @@ func filterNodesBySoftware(db *sql.DB, nodes []string) ([]string, error) {
 		}(node)
 	}
 
-	// Wait for all goroutines to finish
 	wg.Wait()
 	close(resultChan)
 
-	// Wait for the result collection goroutine to finish
 	<-done
 
 	return filteredNodes, nil
 }
 
-// getNodeInfoURL retrieves the nodeinfo URL from the well-known endpoint
 func getNodeInfoURL(client *http.Client, node string) (string, error) {
 	wellKnownURL := fmt.Sprintf("https://%s/.well-known/nodeinfo", node)
 
@@ -369,7 +340,6 @@ func getNodeInfoURL(client *http.Client, node string) (string, error) {
 	return "", fmt.Errorf("no nodeinfo link found")
 }
 
-// getNodeSoftware retrieves the software name from nodeinfo
 func getNodeSoftware(client *http.Client, nodeInfoURL string) (string, error) {
 	resp, err := client.Get(nodeInfoURL)
 	if err != nil {

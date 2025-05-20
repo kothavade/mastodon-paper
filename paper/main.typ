@@ -46,7 +46,7 @@ From this filtered list of nodes, we then collected data about each node leverag
 
 Upon collecting this data about nodes in a database, we use the neo4j graph database to insert all nodes, the properties of these nodes, and finally create `PEERS_WITH` relationships between peers as defined by the aforementioned `peers` API @neo4j @mastodon_peers.
 
-We believe that this is a representative dataset of the Mastodon network, and thus feel that the analyses we conduct from this graph dataset represent the true network well.
+We believe that this is a representative dataset of the Mastodon network, and thus feel that the analyses we conduct from this graph dataset represent the true network well. This is supported by the fact that statistics published by the Mastodon project state that there are 8739 instances and 9651558 users, which we are close to--especially considering that we count non-Mastodon software which supports the protocol @mastodon_statistics.
 
 = Analysis
 == Location of Instances

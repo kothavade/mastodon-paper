@@ -87,6 +87,29 @@ In the collection and analysis of this data, we created a Go program which conne
 #let top_5_share = pct(top_5_total / total_instances)
 
 As @country_table shows, the majority of instances are in the United States, followed by France, Germany, Portugal, and Japan. In fact, the top 5 countries alone account for #top_5_share of all instances.
+// country,totalPosts,totalUsers,numberOfInstances,averagePostsPerUser
+#let countries_most_avg = (
+  csv("countries-with-highest-avg-posts-per-user.csv")
+    .slice(1)
+    .map(x => (
+      cc_flag(x.at(0)),
+      x.at(1),
+      x.at(2),
+      x.at(3),
+      [#{ calc.round(float(x.at(4)), digits: 2) }],
+    ))
+)
+#figure(
+  caption: [Countries with Highest Average Posts per User],
+  table(
+    columns: (auto, auto, auto, auto, auto),
+    align: (left, left, right, right, right),
+    table.header[Country][Total Posts][Total Users][Number of Instances][Avg Posts per User],
+    ..countries_most_avg.flatten(),
+  ),
+)
+
+When looking at the countries with the highest average posts per user, we see that the Netherlands and Japan are far above the rest, with their average posts per user being approximately twice as high as the next highest country, South Korea. Furthermore, both of these countries have a meaningful number of instances, incidiating that this is not due to a few outliers.
 
 == Cloud Providers
 #let cloud_providers = csv("cloud_providers.csv")

@@ -34,7 +34,7 @@
 #let cc_flag(x) = [#flag(x) #x]
 #let pct(x) = [#{ calc.round(x * 100, digits: 2) }%]
 
-#todo_outline
+// #todo_outline
 
 = Introduction
 We want to explore characteristics of the Mastodon network related to the geographical distribution of nodes, cloud providers nodes are hosted on, and more @mastodon. This paper is largely inspired by "Design and evaluation of IPFS: a storage layer for the decentralized web", which demonstrates the kinds of measurments that could be done on a decentralized network @ipfs.
@@ -115,7 +115,7 @@ As @country_table shows, the majority of instances are in the United States, fol
 #let total_cloud_instances = cloud_providers.slice(1).map(x => int(x.at(1))).sum()
 #let cloud_share = pct(total_cloud_instances / total_instances)
 
-Most instances are not hosted on cloud providers, and among those that are, surprisingly the most common are none of the big 3, but instead OVH, Hetzner, and DigitalOcean. In total, we see that #cloud_share of instances are hosted on cloud providers, indicating that the majority of instances are run on personal servers. From this, we can infer that many Mastodon administrators are running Mastodon servers in the cloud. This raises some concerns over the concentration of peers in specific networks.
+Most instances are not hosted on cloud providers, and among those that are, surprisingly the most common are none of the big 3, but instead OVH, Hetzner, and DigitalOcean. In total, we see that #cloud_share of instances are hosted on cloud providers, indicating that the majority of instances are run on personal servers. This suggests that the Fediverse's decentralized nature extends beyond just its social structure to its infrastructure, with many operators choosing to maintain their own hardware rather than relying on major cloud providers.
 
 == Autonomous Systems
 
@@ -128,14 +128,14 @@ Most instances are not hosted on cloud providers, and among those that are, surp
   caption: [Distribution of IPs across ASes according to their size (measured by their AS rank).],
   lq.diagram(
     lq.scatter(
-      non_cloud_instances.map(x => int(x.at(0))),
-      non_cloud_instances.map(x => int(x.at(4))),
+      non_cloud_instances.map(x => x.at(0)),
+      non_cloud_instances.map(x => x.at(4)),
       color: blue,
       label: [Non Cloud],
     ),
     lq.scatter(
-      cloud_instances.map(x => int(x.at(0))),
-      cloud_instances.map(x => int(x.at(4))),
+      cloud_instances.map(x => x.at(0)),
+      cloud_instances.map(x => x.at(4)),
       color: red,
       label: [Cloud],
     ),
@@ -151,6 +151,8 @@ Most instances are not hosted on cloud providers, and among those that are, surp
 We mapped IP addresses to Autonomous Systems using GeoLite2, found the CAIDA AS Rank for each AS. According to CAIDA, the AS Rank is a measure of the influcence of an AS to the global routing system, as calculated by their sizes, peering agreements, and more @as_rank.
 
 We then plotted the number of IP addresses per AS, colored by whether the AS is a cloud provider or not. We see that the cloud providers are disproportionately large, and that there are many more IP addresses in the cloud providers than in the non-cloud providers.
+
+The graph reveals that most Mastodon instances are hosted on high-ranking AS systems (higher numbers indicate lower influence in the global routing system), suggesting that the Fediverse infrastructure largely relies on smaller, less central network operators rather than the internet backbone providers. This aligns with the decentralized ethos of the Mastodon network, with many instances avoiding both major cloud providers and core internet infrastructure
 
 #let n_top_as = 5
 #let top_as_names = (

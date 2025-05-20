@@ -181,8 +181,6 @@ We then plotted the number of IP addresses per AS, colored by whether the AS is 
   ),
 )
 
-
-
 == Most Peered Instances
 #let most_peered_instances = csv("most-peered-instances.csv").slice(1)
 #figure(

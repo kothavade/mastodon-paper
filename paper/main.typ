@@ -42,7 +42,7 @@ We want to explore characteristics of the Mastodon network related to the geogra
 = Methodology
 While writing a crawler is simple in principle, to mitigate time constraints we began with a seed list of alive nodes created by an external, open-source Fediverse crawler @crawler. This crawler is updated every 6 hours. From the list created by this crawler, we filter down to Fediverse nodes hosting Mastodon or Mastodon-compatible software (as opposed to, for example, WordPress), and then to nodes which supported the `peers` API we leverage to determine node connectivity.
 
-From this filtered list of nodes, we then collected data about each node leveraging the MaxMind GeoIP databases and by resolving the IPs for the domains, and looking up their ASN, AS organization names, country codes. #todo([cite MaxMind], inline: true) Furthermore, we use an `instance` API to collect user and post counts for all instances.
+From this filtered list of nodes, we then collected data about each node leveraging the MaxMind GeoIP databases and by resolving the IPs for the domains, and looking up their ASN, AS organization names, country codes @maxmind. Furthermore, we use an `instance` API to collect user and post counts for all instances.
 
 Upon collecting this data about nodes in a database, we use the neo4j graph database to insert all nodes, the properties of these nodes, and finally create `PEERS_WITH` relationships between peers as defined by the aforementioned `peers` API.
 
@@ -189,7 +189,7 @@ We then plotted the number of IP addresses per AS, colored by whether the AS is 
     columns: (auto, auto, auto, auto),
     align: (left, right, right, right),
     table.header[Instance][Peers][Users][Posts],
-    ..most_peered_instances.slice(0,11).flatten(),
+    ..most_peered_instances.slice(0, 11).flatten(),
   ),
 )<most_peered_instances>
 
